@@ -1,4 +1,4 @@
-# # <p align="center">Bibliometrix Report Generator</p>
+# <p align="center">Bibliometrix Report Generator</p>
 
 The Bibliometrix Report Generator is a tool developed in R that harnesses the power of the Bibliometrix package for bibliometric and scientometric analyses. It uses RMarkdown files to render comprehensive, easy-to-understand reports from bibliometric metadata and citation data, offering insightful analysis of trends and patterns within a corpus of academic literature.
 
@@ -22,11 +22,10 @@ This project is open-source and contributions are welcome. Feel free to submit p
 
 ## License / Licença
 
-The Bibliometrix package, upon which this report generator is based, is licensed under the GNU General Public License as published by the Free Software Foundation, either version 2 of the License, or any later version.
+The [Bibliometrix package](https://github.com/massimoaria/bibliometrix), upon which this report generator is based, is licensed under the GNU General Public License as published by the Free Software Foundation, either version 2 of the License, or any later version.
+- For more details, please refer to the [GNU General Public License](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html).
 
-O pacote Bibliometrix, no qual este gerador de relatórios se baseia, está licenciado sob a Licença Pública Geral GNU, conforme publicado pela Free Software Foundation, seja a versão 2 da Licença, ou qualquer versão posterior.
+*O [pacote Bibliometrix](https://github.com/massimoaria/bibliometrix), no qual este gerador de relatórios se baseia, está licenciado sob a Licença Pública Geral GNU, conforme publicado pela Free Software Foundation, seja a versão 2 da Licença, ou qualquer versão posterior.*
 
-- For more details, please refer to the [GNU General Public License](https://github.com/massimoaria/bibliometrix).
-
-- Para mais detalhes, por favor, consulte a [Licença Pública Geral GNU](https://github.com/massimoaria/bibliometrix).
+*- Para mais detalhes, por favor, consulte a [Licença Pública Geral GNU](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html).*
 

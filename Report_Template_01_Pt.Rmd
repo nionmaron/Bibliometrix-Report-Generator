@@ -1,0 +1,742 @@
+---
+title: "Bibliometria: Machine Learning + Flood Susceptibility"
+author: "Nion Maron Dransfeld"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    css: custom.css
+    code_folding: show
+    self_contained: true
+    thumbnails: false
+    lightbox: false
+pkgdown:
+  as_is: true 
+ 
+---
+
+```{r setup, include = FALSE}
+
+library(bibliometrix)
+library(openxlsx)
+library(DT)
+library(scales)
+library(ggplot2)
+library(ggthemes)
+library(viridis)
+library(ggrepel)
+library(magick)
+library(ggimage)
+library(ggchicklet) #devtools::install_github("hrbrmstr/ggchicklet")
+library(png)
+library(grid)
+library(gridExtra)
+library(cowplot)
+library(formattable)
+library(ungroup)
+library(dplyr)
+library(kableExtra)
+library(htmlwidgets)
+library(webshot)
+
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+```
+
+
+```{r Read the data, include=FALSE}
+
+# Read the data
+db_All1<-read.xlsx("Database/FS by ML all rev01.xlsx")
+db_All1<-db_All1[order(db_All1$TI),]
+db_All1<-db_All1[order(db_All1$PY,decreasing = TRUE),]
+#write.csv2(db_All1,"teste.csv")
+db_All2<-db_All1
+
+```
+
+
+```{r Check the Folders, include=FALSE}
+# Check if the folder exists and create a new one
+if (!dir.exists("images")) {dir.create("images")}
+if (!dir.exists("tables")) {dir.create("tables")}
+```
+
+
+# Verificação da integridade dos metadados incluídos na tabela de dados bibliográficos
+
+Verificação de dados ausentes:resultados apenas para os metadados necessários para realizar análises com bibliometrix ou biblioshiny
+
+
+
+```{r, echo=FALSE, results='asis'}
+
+table<-missingData(db_All1)
+knitr::kable(table$mandatoryTags)
+
+results <- biblioAnalysis(db_All1, sep = ";")
+
+results$CO
+
+```
+
+
+
+```{r include=FALSE}
+all_data<-summary(object = results,k = 200, pause = FALSE)
+
+data10 <-summary(object = results, k = 10, pause = FALSE)
+data20 <-summary(object = results, k = 20, pause = FALSE)
+
+
+#rr<-plot(x = results, k = 10, pause = FALSE)
+
+```
+
+<br>
+
+## Publicações por ano
+```{r}
+knitr::kable(data10$AnnualProduction,align = "cc")
+write.xlsx(data10$AnnualProduction,"tables/AnnualProduction.xlsx")
+
+```
+
+## Principais Revistas
+```{r}
+knitr::kable(data10$MostRelSources)
+
+```
+
+<br>
+
+## Autores com maior número de publicações
+
+A autoria fracionada (*Articles Fractionalized*) é uma medida utilizada em estudos bibliométricos para representar a distribuição de frequência dos autores de uma maneira ajustada. Essa medida leva em consideração a contribuição de cada autor em cada artigo, em vez de simplesmente contar o número de artigos que cada autor publicou.
+
+Em uma distribuição de frequência não fracionada, cada artigo é atribuído a todos os autores igualmente, independentemente do número total de autores do artigo. No entanto, na distribuição fracionada, a contribuição de cada autor em um artigo é dividida igualmente entre todos os autores do artigo.
+
+Por exemplo, se um artigo tem três autores (A, B e C), em uma distribuição de frequência não fracionada, cada autor receberia um ponto (1). No entanto, na distribuição fracionada, cada autor receberia um terço (1/3) de um ponto. Isso permite que a distribuição fracionada leve em consideração a contribuição real de cada autor, evitando inflar artificialmente a contagem de artigos de um autor que colaborou em muitos artigos com um grande número de coautores.
+
+
+```{r MostProdAuthors}
+knitr::kable(data20$MostProdAuthors[])
+write.xlsx(all_data$MostProdAuthors[],"tables/all_ProdAuthors.xlsx")
+
+```
+
+
+<br>
+
+## Artigos mais citados
+```{r, fig.width=5, fig.height=5, fig.asp=1}
+
+knitr::kable(data10$MostCitedPapers)
+
+df_MostCitedPapers<-data10$MostCitedPapers
+df_MostCitedPapers$`Paper         `<-as.character(df_MostCitedPapers$`Paper         `)
+df_MostCitedPapers$TC<-as.numeric(df_MostCitedPapers$TC)
+df_MostCitedPapers$TCperYear<-as.numeric(df_MostCitedPapers$TCperYear)
+df_MostCitedPapers$NTC<-as.numeric(df_MostCitedPapers$NTC)
+df_MostCitedPapers$`Paper         `
+
+
+paste0(as.character(df_MostCitedPapers$`Paper         `),"\n",as.numeric(df_MostCitedPapers$TC)," citações (",as.numeric(df_MostCitedPapers$TCperYear)," por ano)")
+
+df <- data.frame(
+  Car = paste0(as.character(df_MostCitedPapers$`Paper         `),"\n",as.numeric(df_MostCitedPapers$TC)," citações (",as.numeric(df_MostCitedPapers$TCperYear)," por ano)"),
+  MPG = as.numeric(df_MostCitedPapers$TC),
+  HP = as.numeric(df_MostCitedPapers$TCperYear)
+)
+
+df<-df[order(df$MPG,decreasing = FALSE),]
+
+
+# Colocando os dados em formato longo para plotar com ggplot2
+df_long <- df %>% 
+  mutate(Car = factor(Car, levels = Car)) %>% 
+  tidyr::pivot_longer(c( HP), names_to = "Variable", values_to = "Value")
+
+
+df_long[df_long$Variable == "HP", ]
+
+# Criando o gráfico
+g_papers<- ggplot(df_long, aes(x = Car, y = Variable, fill = Value)) +
+          geom_tile(color = "white") +
+          geom_text(data = df_long[(df_long$Variable) == "HP", ],
+                    aes(label = Car, y = Variable,hjust = 0.5),
+                    size = 3, color = "black") +
+          scale_fill_gradient(low = "white", high = "steelblue") +
+          theme_minimal() +
+          theme(axis.text.x = element_blank(),
+                legend.position = "bottom",
+                axis.text.y = element_blank(),
+                panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank()) +
+          scale_y_discrete(position = "right") +
+          labs(x = "", y = "", fill = "Citações por Ano") +
+          coord_flip()
+
+g_papers
+
+write.xlsx(data10$MostCitedPapers,"tables/MostCitedPapers.xlsx")
+
+```
+
+<br>
+
+```{r function authorProdOverTime2, include=FALSE}
+authorProdOverTime2 <- function(M,k=10, graph=TRUE){
+
+  if (!("DI" %in% names(M))){M$DI="NA"}
+  M$TC <- as.numeric(M$TC)
+  M$PY <- as.numeric(M$PY)
+  M <- M[!is.na(M$PY),] #remove rows with missing value in PY
+  
+  Y <- as.numeric(substr(Sys.time(),1,4))
+  listAU <- (strsplit(M$AU, ";"))
+  nAU <- lengths(listAU)
+  df <- data.frame(AU=trimws(unlist(listAU)), SR=rep(M$SR,nAU)) 
+  AU <- df %>% 
+    group_by(.data$AU) %>% 
+    count() %>% 
+    arrange(desc(.data$n)) %>% 
+    ungroup() 
+  k <- min(k,nrow(AU))
+  AU <- AU %>% 
+    slice_head(n=k)
+  
+  df <- df %>% 
+    right_join(AU, by = "AU") %>%
+    left_join(M, by = "SR") %>% 
+    select(.data$AU.x,.data$PY, .data$TI, .data$SO, .data$DI, .data$TC) %>% 
+    mutate(TCpY = .data$TC/(Y-.data$PY+1)) %>%
+    group_by(.data$AU.x) %>% 
+    mutate(n = length(.data$AU.x)) %>% 
+    ungroup() %>% 
+    rename(Author = .data$AU.x,
+           year = .data$PY,
+           DOI = .data$DI) %>% 
+    arrange(desc(.data$n), desc(.data$year)) %>% 
+    select(-.data$n)
+  
+  df2 <- dplyr::group_by(df, .data$Author,.data$year) %>%
+    dplyr::summarise(freq=length(.data$year),TC=sum(.data$TC),TCpY=sum(.data$TCpY)) %>% 
+    as.data.frame()
+  
+  df2$Author <- factor(df2$Author,levels=AU$AU[1:k])
+  
+  x <- c(0.5,1.5*k/10)
+  y <- c(min(df$year),min(df$year)+diff(range(df2$year))*0.125)
+  
+  g <- ggplot(df2, aes(x=.data$Author, y=.data$year, text = paste("Author: ", .data$Author,"\nYear: ",.data$year ,"\nN. of Articles: ",.data$freq ,"\nTotal Citations per Year: ", round(.data$TCpY,2))))+
+    geom_point(aes(alpha=.data$TCpY,size = .data$freq), color="dodgerblue4")+ 
+    
+    scale_size(range=c(2,6))+
+    scale_alpha(range=c(0.3,1))+
+    scale_y_continuous(breaks = seq(min(df2$year),max(df2$year), by=2))+
+    guides(size = guide_legend(order = 1, title = "N.Articles", title.position = "top"), alpha = guide_legend(order = 2, title = "TC per Year", title.position = "top"))+
+    theme(legend.position = 'bottom'
+          #,aspect.ratio = 1
+          ,text = element_text(color = "#444444")
+          ,panel.background = element_rect(fill = '#FFFFFF')
+          #,panel.grid.minor = element_line(color = 'grey95')
+          #,panel.grid.major = element_line(color = 'grey95')
+          ,plot.title = element_text(size = 12)
+          ,axis.title = element_text(size = 12, color = '#555555')
+          ,axis.title.y = element_text(vjust = 1)#, face="bold")
+          ,axis.title.x = element_text(hjust = .95)#,face="bold")
+          ,axis.text.x = element_text(face="bold")
+          ,axis.text.y = element_text(face="bold")
+          #,axis.line.x = element_line(color="black", size=1)
+          ,axis.line.x = element_line(color="grey50", size=0.5)
+          ,panel.grid.major.x = element_blank() 
+          ,panel.grid.major.y = element_line( size=.2, color="grey90" ) 
+    )+
+    #coord_fixed(ratio = 2/1) +
+    labs(title="Authors' Production over Time", 
+         x="Author",
+         y="Year")+
+    geom_line(data=df2,aes(x = .data$Author, y = .data$year, group=.data$Author),size=1.0, color="firebrick4", alpha=0.3 )+
+    scale_x_discrete(limits = rev(levels(df2$Author)))+
+    coord_flip() 
+
+  df$DOI=as.character(df$DOI)
+  res <- list(dfAU=df2,dfPapersAU=df,graph=g)
+  if (isTRUE(graph)){plot(g)}
+  return(res)
+}
+
+```
+
+
+## Produção dos principais autores durante os anos
+
+```{r TopAU, echo=FALSE, fig.height=4, fig.width=8}
+#topAU <- authorProdOverTime(db_All2, k = 10, graph = TRUE)
+topAU<-authorProdOverTime2(db_All2, k = 10, graph = TRUE)
+
+G_topAU<- topAU$graph + labs(title = "a - Principais produtores") + 
+  theme(plot.margin = margin(5, 5, 5, 5, "mm"), plot.background = element_rect(color = "gray", size = 0.5,linetype="dotted"))
+G_papers <- g_papers + labs(title = "b - Artigos mais citados") +
+  theme(plot.margin = margin(5, 5, 5, 5, "mm"), plot.background = element_rect(color = "gray", size = 0.5,linetype="dotted"))
+
+# Organize os gráficos em uma linha com larguras relativas
+combined_plot_papers <- plot_grid(G_topAU, G_papers, nrow = 1, rel_widths = c(0.6, 0.4), rel_heights = c(1, 2))
+
+# Salve o gráfico como um arquivo PNG
+ggsave("images/combined_plot_papers.png", combined_plot_papers, width = 11, height = 5.5, dpi = 320)
+
+
+```
+
+
+**TCperYear**	the yearly average number of times each manuscript has been cited 
+
+<br>
+
+## Os 10 Principais Países na Produção dos Artigos Avaliados
+
+Esta seção avalia publicações científicas (artigos, livros, entre outros) que foram produzidas por autores de um único país ou diferentes países. Algumas publicações podem ter sido produzidas em colaboração entre autores de diferentes partes do mundo
+
+```{r}
+
+
+df_Country<-as.data.frame(all_data$MostProdCountries)
+df_Country$Country<-as.character(df_Country$Country)
+df_Country$Articles<-as.numeric(df_Country$Articles)
+df_Country$SCP<-as.numeric(df_Country$SCP)
+df_Country$MCP<-as.numeric(df_Country$MCP)
+knitr::kable(df_Country[1:10,])
+
+write.xlsx(df_Country,"tables/MostProdCountries.xlsx")
+```
+
+SCP: Single Country Publications \
+MCP: Multiple Country Publications
+
+
+
+```{r, fig.width=10, fig.height=5}
+# Gráfico C: Scatterplot
+txt00<-paste0("(",df_Country$SCP," + ",df_Country$MCP,") = ",df_Country$Articles)
+
+df_Country$Country_and_Publications <- paste(df_Country$Country, txt00, sep = "\n")
+df_Country$Country_and_Publications <- gsub(" ","",df_Country$Country_and_Publications)
+
+class(df_Country$Country)
+gC <- ggplot(df_Country, aes(x = MCP, y = SCP)) +
+  geom_point(aes(color = Country, size = Articles), alpha = 0.9) +
+  scale_size_continuous(range = c(1,14)) +
+  labs(x = "Multiple Country Publications", y = "Single Country Publications",
+       color = "País", size = "Total de publicações por país", title = "Distribuição de Publicações Científicas por País: Único vs Múltiplos") +
+  guides(color =FALSE, size = guide_legend(override.aes = list(color = "darkblue"),title.hjust = 0.5,label.position = "top", title.position = "top", direction = "horizontal", keywidth = 1, keyheight = 1)) +
+  geom_text_repel(aes(label = Country_and_Publications), size = 3.5, show.legend = FALSE,colour = "black",face="bold",nudge_y = 0.5) +
+  theme_minimal()+
+  
+  theme(plot.title = element_text(hjust = 0, vjust = 1, face="bold", size=14),
+        #plot.background = element_rect(colour = "black", fill = NA, size = 0.2,linetype = "dashed"),
+        legend.position = c(0.95, 1),
+        legend.justification = c("right", "top"),
+        legend.box.just = "right",
+        axis.title.y = element_text(face="bold", size=12),
+        axis.title.x = element_text(face="bold", size=12),
+        axis.text.x = element_text(size=10),
+        axis.text.y = element_text(size=10),
+        legend.box.background = element_rect(color = "black", linetype = "dashed"),
+        #legend.key = element_rect(fill = "transparent"),
+        panel.grid.major = element_line(color = "grey", size = 0.5),
+        panel.grid.minor = element_line(color = "grey", size = 0.25,linetype="dotted"),
+        legend.margin = margin(1, 1, 1, 1))
+
+
+color = FALSE
+gC
+
+
+# Salve o gráfico como um arquivo PNG quadrado
+#ggsave("gC.png", gC, width = 5, height = 5, dpi = 300)
+
+
+```
+
+
+<br>
+
+## Principais Países que tiveram seus artigos citados
+```{r}
+
+df_CitationsPerCountries<- as.data.frame(data10$TCperCountries)
+names(df_CitationsPerCountries)<-c("Country", "Total_Citations","Average Article Citations")
+
+
+df_CitationsPerCountries$Country<- as.character(df_CitationsPerCountries$Country)
+df_CitationsPerCountries$Total_Citations<-as.numeric(df_CitationsPerCountries$Total_Citations)
+df_CitationsPerCountries$`Average Article Citations`<-as.numeric(df_CitationsPerCountries$`Average Article Citations`)
+
+knitr::kable(df_CitationsPerCountries)
+
+```
+
+
+```{r, fig.width=8, fig.height=8, fig.asp=1}
+
+
+cores <- c("#6495ED", "#0000CD", "#000080")
+# Defina os limites para cada intervalo de cores
+limites <- c(max(df_CitationsPerCountries$Total_Citations)*1/3, max(df_CitationsPerCountries$Total_Citations)*2/3, max(df_CitationsPerCountries$Total_Citations))
+# Crie um vetor de cores usando a função colorRampPalette()
+my_palette <- colorRampPalette(cores)
+
+
+# Crie o gráfico
+df_CitationsPerCountries$Flag <- paste0("Bandeiras/", toupper(gsub(" ", "-", trimws(df_CitationsPerCountries$Country, "right"))), ".png")
+
+
+df_CitationsPerCountries$`Average Article Citations`
+gD <- ggplot(df_CitationsPerCountries, aes(x = reorder(Country, Total_Citations), y = Total_Citations, fill = `Average Article Citations`)) +
+  #geom_bar(stat = "identity", color = "black") +
+  geom_chicklet(radius = grid::unit(3.5, "mm")) +
+  coord_flip() +
+  geom_text(aes(label = Total_Citations), hjust = -0.4, size = 4) +
+  labs(x = NULL,
+       y = "Total de Citações",
+       title = "Total de citações por país dos autores",
+       fill = "Média das Citações \n por Publicações") +
+  guides(fill = guide_colourbar(title.position = "top", title.hjust = 0.5, label.position = "bottom", barwidth = 7,barheight = 1))+
+  geom_image(aes(image = Flag), y = 0, hjust = -0.8, vjust = 0.5,size = 0.1) +
+  #annotate("text", x = 10, y = 300, label = "Seu texto", size = 5, colour = "black")+
+  theme_minimal() +
+  
+
+  theme(
+    plot.title = element_text(hjust = 0, vjust = 1, face="bold", size=14),
+    plot.title.position = "plot",
+    axis.title.y = element_text(face="bold", size=12),
+    axis.title.x = element_text(face="bold", size=12),
+    axis.text.x = element_text(face = "bold", size = 10, hjust = 1, margin = margin(t = 0)),
+    axis.text.y = element_text(face = "bold", size = 10, hjust = 0, margin = margin(t = 50),colour = "black"),
+    legend.position = c(0.65, 0),
+    legend.direction = "horizontal",
+    legend.justification = c(0, 0),
+    legend.key = element_blank()) +
+  scale_fill_gradientn(colours = my_palette(3), 
+                                values = scales::rescale(limites))+
+  expand_limits(y = max(df_CitationsPerCountries$Total_Citations) * 1.08)
+
+print(gD)
+```
+
+<br>
+
+```{r, fig.width=10, fig.height=20}
+# Adicione um título a cada gráfico
+
+gC <- gC + labs(title = "c - Distribuição das publicações científicas por país \n") + 
+  theme(plot.margin = margin(5, 5, 5, 5, "mm"), plot.background = element_rect(color = "gray", size = 0.5,linetype="dotted"))
+gD <- gD + labs(title = "b - Total de citações das publicações por país \n") +
+  theme(plot.margin = margin(5, 5, 5, 5, "mm"), plot.background = element_rect(color = "gray", size = 0.5,linetype="dotted"))
+
+img <- readPNG("CountryCollaborationMap.png")
+g <- rasterGrob(img, interpolate=TRUE)
+g_img <- ggplot() +
+  annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  theme_void() 
+  
+g_img  <- g_img  + labs(title = "a - Rede de colaboração das publicações por país de origem") +
+  theme(plot.margin = margin(5, 5, 5, 5, "mm"), 
+        plot.background = element_rect(color = "gray", size = 0.5,linetype="dotted"),
+        plot.title = element_text(hjust = 0, vjust = 1, face="bold", size=14),)
+
+# Organize os gráficos em uma linha com larguras relativas
+combined_plot <- plot_grid(gD,gC, nrow = 1, rel_widths = c(1, 1),rel_heights = c(1, 4))
+combined_plot2<-grid.arrange(g_img ,combined_plot, nrow=2)
+
+# Salve o gráfico como um arquivo PNG
+ggsave("images/combined_plot.png", combined_plot2, width = 12, height = 12, dpi = 320)
+
+```
+
+<br>
+
+
+
+
+<br>
+
+## Estração de dados
+```{r echo=TRUE}
+
+# "CR_AU"		First Author of each cited reference
+# "CR_SO"		Source of each cited reference
+# "AU_CO"		Country of affiliation for co-authors
+# "AU1_CO"	Country of affiliation for the first author
+# "AU_UN"		University of affiliation for each co-author and the corresponding author (AU1_UN)
+# "SR"		  Short tag of the document (as used in reference lists)
+
+Country_affiliation <- metaTagExtraction(db_All2, Field = "AU1_CO", sep = ";")
+
+M <- metaTagExtraction(db_All2, Field = "AU_CO", sep = ";")
+
+bradford(M)
+KeywordGrowth(M)
+
+
+
+
+
+# Carregar o pacote ggplot2
+library(ggplot2)
+
+# Criar um dataframe de exemplo
+set.seed(123)
+df <- data.frame(
+  ano = rep(2010:2022, times = 3),
+  termo = rep(c("Termo A", "Termo B", "Termo C"), each = 13),
+  frequencia = c(sample(1:50, 13, replace = TRUE), sample(30:80, 13, replace = TRUE), sample(60:110, 13, replace = TRUE))
+)
+
+# Gerar o gráfico de linhas
+ggplot(df, aes(x = ano, y = frequencia, color = termo)) +
+  geom_line() +
+  labs(title = "Tendência de termos ao longo do tempo", x = "Ano", y = "Frequência") +
+  theme_minimal()
+
+ggplot(df, aes(x = ano, y = frequencia, fill = termo)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Distribuição de termos por ano", x = "Ano", y = "Frequência") +
+  theme_minimal()
+
+
+ggplot(df, aes(x = ano, y = frequencia, fill = termo)) +
+  geom_area() +
+  labs(title = "Distribuição de termos por ano", x = "Ano", y = "Frequência") +
+  theme_minimal()
+
+ggplot(df, aes(x = frequencia)) +
+  geom_density(fill = "steelblue") +
+  facet_wrap(~termo) +
+  labs(title = "Distribuição de frequências de termos", x = "Frequência") +
+  theme_minimal()
+
+ggplot(df, aes(x = termo, y = frequencia, fill = termo)) +
+  geom_boxplot() +
+  labs(title = "Distribuição de frequências de termos", x = "Termo", y = "Frequência") +
+  theme_minimal()
+
+```
+
+<br>
+
+## Principais Palavras Chaves
+```{r}
+knitr::kable(data10$MostRelKeywords)
+
+```
+<br>
+
+
+## Co-Word Analysis:
+```{r}
+CS <- conceptualStructure(M,field="ID", method="CA", minDegree=4, clust=5, stemming=FALSE, labelsize=10, documents=10)
+
+```
+
+## Análise de rede de acoplamento (Coupling Map)
+
+
+Uma análise de rede de acoplamento é uma técnica utilizada para investigar a relação entre diferentes artigos científicos. Nessa análise, dois artigos são considerados "acoplados" se compartilham muitas referências em comum. Este tipo de análise é útil para identificar artigos que abordam temas semelhantes ou que são fundamentados em bases teóricas similares.
+
+A detecção de comunidades é um processo que busca identificar grupos de nós em uma rede que estão mais densamente conectados entre si do que com o restante da rede. Em outras palavras, busca identificar "comunidades" de artigos que compartilham muitas referências em comum.
+
+O "Coupling Map" é uma representação visual dessas comunidades. Ele é um mapa bidimensional onde os pontos representam artigos e as linhas entre eles indicam um alto grau de acoplamento. Cada comunidade de artigos é geralmente representada por uma cor ou forma diferente para facilitar a visualização.
+
+```{r}
+
+#localCitations(M,fast.search=FALSE,sep=";",verbose=FALSE)
+
+
+res<-couplingMap(M,analysis="authors",field="CR",n=250,impact.measure="local", minfreq=3,size=0.5,repel=TRUE)
+plot(res$map)
+
+res<-thematicMap(M,field="ID",n=250,size=0.5,repel=TRUE)
+plot(res$map)
+
+rs22 <- couplingMap(M, analysis = "authors", field = "DE", n = 250, impact.measure="local", 
+                   minfreq = 3, size = 0.5, repel = TRUE)
+
+rs22$map
+```
+
+
+
+## Rede de colaboração entre países
+
+```{r echo=FALSE}
+
+NetMatrix <- biblioNetwork(M, analysis = "collaboration", network = "countries", sep = ";")
+# Plot the network
+hh<-networkPlot(NetMatrix, n = dim(NetMatrix)[1], Title = "Rede de Colaboração", type = "sphere", size=10, remove.multiple=FALSE,labelsize=1,alpha = 0.8)
+
+```
+
+
+## Análise relacional das citações
+
+
+```{r echo=FALSE}
+# Create a co-citation network
+
+NetMatrix <- biblioNetwork(db_All2, analysis = "co-citation", network = "references", n=30, sep = ";")
+
+# Plot the network
+net=networkPlot(NetMatrix, Title = "Rede de cocitação", type = "fruchterman", size=T, remove.multiple=FALSE, labelsize=0.7,edgesize = 5,alpha = 0.8)
+```
+
+
+
+
+## Palavras: Rede de Ocorrências
+
+```{r echo=FALSE}
+# Create keyword co-occurrences network
+
+NetMatrix <- biblioNetwork(db_All2, analysis = "co-occurrences", network = "keywords", sep = ";")
+
+# Plot the network
+net=networkPlot(NetMatrix, normalize="association", weighted=T, n = 25, Title = "Keyword Co-occurrences", type = "fruchterman", size=T,edgesize = 1,labelsize=0.8,alpha = 0.8)
+
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+# Conceptual Structure using keywords (method="CA")
+
+CS <- conceptualStructure(db_All2,field="ID", method="MCA", minDegree=10, clust=5, stemming=FALSE, labelsize=15, documents=20, graph=FALSE)
+plot(CS$graph_terms)
+
+plot(CS$graph_dendogram)
+```
+
+
+## Rede de citações
+
+```{r include=FALSE}
+
+# Create a historical citation network
+histResults <- histNetwork(db_All2, sep = ";")
+net <- histPlot(histResults, n=20, size = FALSE,label="short")
+
+```
+
+
+```{r}
+net$g
+```
+
+<br>
+
+## Artigos Selecionados
+
+```{r, echo=FALSE, results='asis'}
+
+# Definir o tema personalizado
+
+db_All2$Link<-paste0("[Link Artigo](","https://www.doi.org/",db_All2$DI,")")
+db_All2$ID<-1:nrow(db_All2)
+
+knitr::kable(db_All2[,c("ID","PY","TI","Link")],caption = 'Lista com todos os artigos selecionados',row.names = FALSE,align = "lllr",column.widths = c(1,1,10,1.5)) 
+
+
+```
+
+
+## Abreviações
+
+<br>
+Abaixo lista de abreviações e descrições de alguns termos do pacote **bibliometrix**
+
+```{r Description of terms, echo=FALSE}
+# Convert the text to a data frame
+text <- "**AU**: Authors /
+**TI**: Document Title/
+**SO**: Publication Name (or Source)/
+**JI**: ISO Source Abbreviation/
+**DT**: Document Type/
+**DE**: Authors’ Keywords/
+**ID**: Keywords associated by SCOPUS or WoS database/
+**AB**: Abstract/
+**C1**: Author Address/
+**RP**: Reprint Address/
+**CR**: Cited References/
+**TC**: Times Cited/
+**PY**: Year/
+**SC**: Subject Category/
+**UT**: Unique Article Identifier/
+**DB**: Database/
+**Articles**: The total number of manuscripts / 
+**Authors**: The authors’ frequency distribution / 
+**AuthorsFrac**: The authors’ frequency distribution (fractionalized) / 
+**FirstAuthors**: Corresponding author of each manuscript / 
+**nAUperPaper**: The number of authors per manuscript / 
+**Appearances**: The number of author appearances / 
+**nAuthors**: The number of authors / 
+**AuMultiAuthoredArt**: The number of authors of multi-authored articles / 
+**MostCitedPapers**: The list of manuscripts sorted by citations / 
+**Years**: Publication year of each manuscript / 
+**FirstAffiliation**: The affiliation of the corresponding author
+**Affiliations**: The frequency distribution of affiliations (of all co-authors for each paper) / 
+**Aff_frac**: The fractionalized frequency distribution of affiliations (of all co-authors for each paper) /
+**CO**: The affiliation country of the corresponding author / 
+**Countries**: The affiliation countries’ frequency distribution /
+**CountryCollaboration**: The intra-country (SCP) and inter-country (MCP) collaboration indices / 
+**TotalCitation**: The number of times each manuscript has been cited / 
+**TCperYear**: The yearly average number of times each manuscript has been cited / 
+**Sources**: The frequency distribution of sources (journals, books, etc.) / 
+**DE**: The frequency distribution of authors’ keywords / 
+**ID**: The frequency distribution of keywords associated to the manuscript by SCOPUS and Thomson Reuters’ ISI Web of Knowledge databases."
+
+# Replace HTML line breaks with newline characters
+text <- gsub("<br>", "\n", text)
+
+# Split the text into lines
+lines <- strsplit(text, "\n")[[1]]
+
+# Initialize empty vectors for terms and descriptions
+terms <- vector("character", length(lines))
+descriptions <- vector("character", length(lines))
+
+# Iterate through the lines and split them into terms and descriptions
+for (i in seq_along(lines)) {
+  pair <- strsplit(lines[i], ": ")[[1]]
+  terms[i] <- pair[1]
+  descriptions[i] <- pair[2]
+}
+
+# Create a data frame from the terms and descriptions
+df <- data.frame(
+  Term = terms,
+  Description = descriptions,
+  stringsAsFactors = FALSE
+)
+
+df<- df %>%
+  arrange(Term ) %>%
+  mutate(Description = gsub("/", "", Description))
+
+# Use knitr::kable to create a table
+knitr::kable(df, col.names = c("Term", "Description"), align = c("l", "l"))
+
+```
+
+
+Mais informações: https://www.bibliometrix.org/vignettes/Introduction_to_bibliometrix.html
+
+
+
+
+
